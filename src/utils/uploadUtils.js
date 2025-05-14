@@ -14,16 +14,36 @@ export async function uploadToImageBed(fileBuffer, fileName, mimeType, env) {
   formData.append('file', new File([fileBuffer], fileName, { type: mimeType }));
 
   const uploadUrl = new URL(IMG_BED_URL);
-  uploadUrl.searchParams.append('returnFormat', 'full');
-
-  if (AUTH_CODE) {
-    uploadUrl.searchParams.append('authCode', AUTH_CODE);
+  
+  // 准备请求头和请求选项
+  const headers = {
+    'Accept': 'application/json'
+  };
+  
+  // 检查图床 URL 是否为 PICUI
+  if (IMG_BED_URL.includes('picui.cn')) {
+    // PICUI 图床使用 Bearer Token 认证
+    if (AUTH_CODE) {
+      // 检查 AUTH_CODE 是否已经包含 "Bearer " 前缀
+      if (AUTH_CODE.startsWith('Bearer ')) {
+        headers['Authorization'] = AUTH_CODE;
+      } else {
+        headers['Authorization'] = `Bearer ${AUTH_CODE}`;
+      }
+    }
+  } else {
+    // 其他图床使用 URL 参数认证
+    uploadUrl.searchParams.append('returnFormat', 'full');
+    if (AUTH_CODE) {
+      uploadUrl.searchParams.append('authCode', AUTH_CODE);
+    }
   }
 
   console.log(`文件上传请求 URL: ${uploadUrl.toString()}`);
 
   const uploadResponse = await fetch(uploadUrl, {
     method: 'POST',
+    headers: headers,
     body: formData
   });
 
