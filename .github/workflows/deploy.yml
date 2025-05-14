@@ -22,3 +22,9 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
+          # 添加环境变量传递配置
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          IMG_BED_URL: ${{ secrets.IMG_BED_URL }}
+          AUTH_CODE: ${{ secrets.AUTH_CODE }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
