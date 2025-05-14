@@ -4,9 +4,9 @@ compatibility_date = "2023-10-30"
 
 [vars]
 # 这些是默认值，可以在 Cloudflare Dashboard 中覆盖
-IMG_BED_URL = "https://img.accdu.cloudns.org/upload"
-BOT_TOKEN = "8073983027:AAE0Z9Z7Agn51OnfpjAjHfl5d1zfabU2DSc"
-AUTH_CODE = "a858"
+IMG_BED_URL = "https://example.com/upload"
+BOT_TOKEN = "your_bot_token_here"
+AUTH_CODE = "your_auth_code_here"
 #ADMIN_CHAT_ID = "optional-admin-chat-id"
 
 # 删除或注释掉以下部分
