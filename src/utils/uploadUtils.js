@@ -20,15 +20,12 @@ export async function uploadToImageBed(fileBuffer, fileName, mimeType, env) {
     uploadUrl.searchParams.append('authCode', AUTH_CODE);
   }
 
-  console.log(`文件上传请求 URL: ${uploadUrl.toString()}`);
-
   const uploadResponse = await fetch(uploadUrl, {
     method: 'POST',
     body: formData
   });
 
   const responseText = await uploadResponse.text();
-  console.log('上传原始响应:', responseText);
 
   try {
     return JSON.parse(responseText);
