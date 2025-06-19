@@ -8,11 +8,3 @@ IMG_BED_URL = "https://example.com/upload"
 BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 AUTH_CODE = "YOUR_AUTH_CODE_HERE"
 #ADMIN_CHAT_ID = "optional-admin-chat-id"
-
-# WebDAV 配置 (AList)
-UPLOAD_METHOD = "webdav" # 可选值: "imageBed" 或 "webdav"
-WEBDAV_URL = "" # AList WebDAV 服务器地址，例如: https://your-alist.example.com/dav
-WEBDAV_USERNAME = "" # WebDAV 用户名
-WEBDAV_PASSWORD = "" # WebDAV 密码
-WEBDAV_PATH = "/" # 上传文件的路径
-WEBDAV_PUBLIC_URL = "" # 文件的公开访问URL前缀，例如: https://your-alist.example.com/d

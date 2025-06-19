@@ -1,5 +1,5 @@
 import { getFile, getFileDownloadUrl, sendMessage } from '../utils/telegramApi.js';
-import { uploadFile, extractUrlFromResult } from '../utils/uploadUtils.js';
+import { uploadToImageBed, extractUrlFromResult } from '../utils/uploadUtils.js';
 import { formatFileSize } from '../utils/formatUtils.js';
 
 /**
@@ -43,7 +43,7 @@ export async function handlePhoto(message, chatId, env) {
     
     // 上传文件
     await sendMessage(chatId, `📤 正在上传图片 (${formatFileSize(fileSize)})...`, env);
-    const uploadResult = await uploadFile(fileBuffer, fileName, 'image/jpeg', env);
+    const uploadResult = await uploadToImageBed(fileBuffer, fileName, 'image/jpeg', env);
     
     // 提取URL
     const imageUrl = extractUrlFromResult(uploadResult, env.IMG_BED_URL);

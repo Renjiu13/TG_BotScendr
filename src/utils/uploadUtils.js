@@ -47,7 +47,7 @@ export function extractUrlFromResult(result, imgBedUrl) {
   let url = '';
   let baseUrl = 'https://your.default.domain'; // 提供一个备用基础URL
   try {
-    if (imgBedUrl && (imgBedUrl.startsWith('https://') || imgBedUrl.startsWith('http://'))) {
+    if (imgBedUrl && (imgBedUrl.startsWith('https://') || imgBedUrl.startsWith('http://'))){
       baseUrl = new URL(imgBedUrl).origin;
     }
   } catch (e) {
@@ -56,7 +56,7 @@ export function extractUrlFromResult(result, imgBedUrl) {
 
   if (typeof result === 'string' && result.includes("The string did not match the expected pattern")) {
     console.error("遇到模式匹配错误，可能是文件扩展名问题");
-    const urlMatch = result.match(/(https?:\/\/[^"]+)/);
+    const urlMatch = result.match(/(https?:\/\/[^\"]+)/);
     if (urlMatch) {
       return urlMatch[0];
     }
@@ -80,107 +80,4 @@ export function extractUrlFromResult(result, imgBedUrl) {
     }
   }
   return url;
-}
-
-/**
- * 上传文件到 WebDAV 服务器 (AList)
- * @param {ArrayBuffer} fileBuffer - 文件数据
- * @param {string} fileName - 文件名
- * @param {string} mimeType - MIME类型
- * @param {Object} env - 环境变量
- * @returns {Promise<Object>} - 上传结果
- */
-export async function uploadToWebDAV(fileBuffer, fileName, mimeType, env) {
-  const WEBDAV_URL = env.WEBDAV_URL;
-  const WEBDAV_USERNAME = env.WEBDAV_USERNAME;
-  const WEBDAV_PASSWORD = env.WEBDAV_PASSWORD;
-  const WEBDAV_PATH = env.WEBDAV_PATH || '/';
-  const WEBDAV_PUBLIC_URL = env.WEBDAV_PUBLIC_URL;
-  
-  if (!WEBDAV_URL) {
-    throw new Error('未配置 WebDAV URL');
-  }
-
-  let uploadPath = `${WEBDAV_URL}`;
-  if (!uploadPath.endsWith('/')) uploadPath += '/';
-  
-  let customPath = WEBDAV_PATH;
-  if (customPath.startsWith('/')) customPath = customPath.substring(1);
-  if (customPath && !customPath.endsWith('/')) customPath += '/';
-  
-  uploadPath += customPath + fileName;
-  
-  console.log(`WebDAV 上传路径: ${uploadPath}`);
-  
-  const headers = {};
-  if (WEBDAV_USERNAME && WEBDAV_PASSWORD) {
-    const authString = `${WEBDAV_USERNAME}:${WEBDAV_PASSWORD}`;
-    const base64Auth = btoa(authString);
-    headers['Authorization'] = `Basic ${base64Auth}`;
-  }
-  headers['Content-Type'] = mimeType;
-  
-  try {
-    const response = await fetch(uploadPath, {
-      method: 'PUT',
-      headers: headers,
-      body: fileBuffer
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`WebDAV 上传失败: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-    
-    let publicUrl = '';
-    if (WEBDAV_PUBLIC_URL) {
-      publicUrl = WEBDAV_PUBLIC_URL;
-      if (!publicUrl.endsWith('/')) publicUrl += '/';
-      publicUrl += customPath + fileName;
-    } else {
-      publicUrl = uploadPath;
-    }
-    
-    return {
-      success: true,
-      url: publicUrl
-    };
-  } catch (error) {
-    console.error('WebDAV 上传错误:', error);
-    throw error;
-  }
-}
-
-/**
- * 根据配置选择合适的上传方法，添加重试限制和错误处理
- * @param {ArrayBuffer} fileBuffer - 文件数据
- * @param {string} fileName - 文件名
- * @param {string} mimeType - MIME类型
- * @param {Object} env - 环境变量
- * @returns {Promise<Object>} - 上传结果
- */
-export async function uploadFile(fileBuffer, fileName, mimeType, env) {
-  const maxRetries = 3;
-  let retryCount = 0;
-  let lastError = null;
-
-  while (retryCount < maxRetries) {
-    try {
-      if (env.UPLOAD_METHOD === 'webdav' && env.WEBDAV_URL) {
-        return await uploadToWebDAV(fileBuffer, fileName, mimeType, env);
-      } else {
-        return await uploadToImageBed(fileBuffer, fileName, mimeType, env);
-      }
-    } catch (error) {
-      lastError = error;
-      retryCount++;
-      console.error(`上传失败 (尝试 ${retryCount}/${maxRetries}):`, error.message);
-
-      if (retryCount < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // 等待2秒后重试
-      }
-    }
-  }
-
-  throw new Error(`上传失败，已重试 ${maxRetries} 次: ${lastError.message}`);
 }

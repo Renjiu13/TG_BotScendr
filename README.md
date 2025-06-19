@@ -28,7 +28,7 @@ TG_BotScendr 是一个部署在 Cloudflare Workers 上的 Telegram 机器人。�
 
 # TG_BotScendr 环境变量配置指南
 
-根据项目文档和配置文件，我整理了  TG_BotScendr 项目中所有的环境变量及其示例值，以便您更清晰地了解如何配置此 Telegram 机器人。
+根据项目文档和配置文件，我整理了 TG_BotScendr 项目中所有的环境变量及其示例值，以便您更清晰地了解如何配置此 Telegram 机器人。
 
 ## 基本环境变量
 
@@ -39,17 +39,6 @@ TG_BotScendr 是一个部署在 Cloudflare Workers 上的 Telegram 机器人。�
 | `AUTH_CODE` | 图床认证码/Token | 是 | `your_imgbed_token_here` |
 | `ADMIN_CHAT_ID` | 管理员的 Telegram 聊天 ID（可选） | 否 | `123456789` |
 
-## WebDAV 配置（使用 AList 时）
-
-| 环境变量 | 描述 | 必填 | 示例值 |
-|---------|------|------|--------|
-| `UPLOAD_METHOD` | 上传方法，可选值: "imageBed" 或 "webdav" | 是 | `imageBed` 或 `webdav` |
-| `WEBDAV_URL` | WebDAV 服务器地址 | 使用 WebDAV 时必填 | `https://your-alist.example.com/dav` |
-| `WEBDAV_USERNAME` | WebDAV 用户名 | 使用 WebDAV 时必填 | `your_username` |
-| `WEBDAV_PASSWORD` | WebDAV 密码 | 使用 WebDAV 时必填 | `your_password` |
-| `WEBDAV_PATH` | 上传文件的路径 | 使用 WebDAV 时必填 | `/` |
-| `WEBDAV_PUBLIC_URL` | 文件的公开访问 URL 前缀 | 使用 WebDAV 时必填 | `https://your-alist.example.com/d` |
-
 ## 配置示例
 
 ### 图床上传配置示例
@@ -59,20 +48,6 @@ TG_BotScendr 是一个部署在 Cloudflare Workers 上的 Telegram 机器人。�
 BOT_TOKEN = "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
 IMG_BED_URL = "https://www.imgtp.com/api/upload"
 AUTH_CODE = "your_imgbed_token_here"
-UPLOAD_METHOD = "imageBed"
-```
-
-### WebDAV (AList) 上传配置示例
-
-```toml
-[vars]
-BOT_TOKEN = "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-UPLOAD_METHOD = "webdav"
-WEBDAV_URL = "https://your-alist.example.com/dav"
-WEBDAV_USERNAME = "your_username"
-WEBDAV_PASSWORD = "your_password"
-WEBDAV_PATH = "/"
-WEBDAV_PUBLIC_URL = "https://your-alist.example.com/d"
 ```
 
 ## 推荐的图床服务及其配置
@@ -92,9 +67,8 @@ WEBDAV_PUBLIC_URL = "https://your-alist.example.com/d"
 ## 部署时的注意事项
 
 1. 确保所有必填环境变量都已正确设置
-2. 敏感信息（如 `BOT_TOKEN`、`AUTH_CODE`、`WEBDAV_PASSWORD`）应在 Cloudflare Dashboard 中勾选"加密"选项
+2. 敏感信息（如 `BOT_TOKEN`、`AUTH_CODE`）应在 Cloudflare Dashboard 中勾选"加密"选项
 3. 设置环境变量后需要重新部署应用才能生效
-4. 如果使用 WebDAV 上传方式，请确保 `UPLOAD_METHOD` 设置为 `"webdav"`，并填写所有 WebDAV 相关配置
 
 
 ## 小白友好的部署指南
