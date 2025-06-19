@@ -32,10 +32,10 @@
 `wrangler.toml` 示例：
 ```toml
 [vars]
-IMG_BED_URL = "https://your-image-bed.com/upload"   # 图床上传接口
-BOT_TOKEN = "你的 Telegram Bot Token"
-AUTH_CODE = "你的图床鉴权码（如有）"
-#ADMIN_CHAT_ID = "可选，管理员 Telegram ID"
+IMG_BED_URL = "YOUR_IMG_BED_URL"   # 图床上传接口
+BOT_TOKEN = "YOUR_BOT_TOKEN"
+AUTH_CODE = "YOUR_AUTH_CODE"
+#ADMIN_CHAT_ID = "YOUR_ADMIN_CHAT_ID (可选)"
 ```
 
 ### 5. 获取 Worker 访问 URL
