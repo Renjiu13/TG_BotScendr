@@ -1,0 +1,15 @@
+{
+    "name": "telegram-file-uploader",
+    "version": "1.0.0",
+    "description": "Telegram 文件上传机器人，支持多种文件类型上传到指定图床",
+    "scripts": {
+      "deploy": "wrangler publish",
+      "dev": "wrangler dev"
+    },
+    "devDependencies": {
+      "wrangler": "^3.0.0"
+    },
+    "engines": {
+      "node": ">=16"
+    }
+  }

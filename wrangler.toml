@@ -1,10 +1,7 @@
-name = "tg-botscendr"
-main = "src/index.js"
-compatibility_date = "2023-10-30"
+name = "telegram-file-uploader"
+main = "worker.js"
+compatibility_date = "2023-01-01"
 
+# 可选：配置环境变量
 [vars]
-# 这些是默认值，可以在 Cloudflare Dashboard 中覆盖
-IMG_BED_URL = "https://example.com/upload"
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-AUTH_CODE = "YOUR_AUTH_CODE_HERE"
-ADMIN_CHAT_ID = "optional-admin-chat-id"
+# 不需要在这里设置 CONFIG，将通过 wrangler secret 命令设置
