@@ -1,9 +1,16 @@
 // 全局常量
 const DEFAULT_MAX_FILE_SIZE = 20 * 1024 * 1024; // 默认20MB
 const CONFIG_ENV_VAR_NAME = 'CONFIG'; // 存储JSON配置的环境变量名
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1分钟
+const RATE_LIMIT_MAX_REQUESTS = 10; // 每分钟最多10个请求
 
 export default {
   async fetch(request, env, ctx) {
+    // 只接受POST请求
+    if (request.method !== 'POST') {
+      return new Response('Method Not Allowed', { status: 405 });
+    }
+
     // 1. 从环境变量获取JSON配置字符串
     const configStr = env[CONFIG_ENV_VAR_NAME];
     if (!configStr) {
@@ -29,17 +36,22 @@ export default {
       return new Response(errorMessage, { status: 500 });
     }
 
+    // 4. 验证webhook请求（可选但推荐）
+    if (config.WEBHOOK_SECRET) {
+      const secretHeader = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+      if (secretHeader !== config.WEBHOOK_SECRET) {
+        console.warn('Invalid webhook secret');
+        return new Response('Unauthorized', { status: 401 });
+      }
+    }
+
     // 将解析后的 config 对象传递给主处理函数
-    return handleRequest(request, config, env);
+    return handleRequest(request, config, env, ctx);
   }
 };
 
 // 主要处理逻辑函数，接收解析后的 config 对象
-async function handleRequest(request, config, env) {
-  if (request.method !== 'POST') {
-    return new Response('只接受POST请求', { status: 405 });
-  }
-
+async function handleRequest(request, config, env, ctx) {
   let update;
   try {
     update = await request.json();
@@ -47,45 +59,148 @@ async function handleRequest(request, config, env) {
 
     const message = update.message;
     const chatId = message.chat.id;
+    const userId = message.from.id;
     const text = message.text?.trim();
+
+    // 用户授权检查
+    if (config.ALLOWED_USERS && Array.isArray(config.ALLOWED_USERS)) {
+      if (!config.ALLOWED_USERS.includes(userId) && !config.ALLOWED_USERS.includes(chatId)) {
+        await sendMessage(chatId, '⛔ 您没有权限使用此机器人。', config);
+        return new Response('OK', { status: 200 });
+      }
+    }
+
+    // 速率限制检查（使用KV存储，如果可用）
+    if (env.RATE_LIMIT_KV) {
+      const rateLimitKey = `rate_limit:${userId}`;
+      const rateLimitData = await env.RATE_LIMIT_KV.get(rateLimitKey, { type: 'json' });
+      
+      const now = Date.now();
+      if (rateLimitData) {
+        const { count, windowStart } = rateLimitData;
+        if (now - windowStart < RATE_LIMIT_WINDOW) {
+          if (count >= RATE_LIMIT_MAX_REQUESTS) {
+            await sendMessage(chatId, '⚠️ 请求过于频繁，请稍后再试。', config);
+            return new Response('OK', { status: 200 });
+          }
+          await env.RATE_LIMIT_KV.put(rateLimitKey, JSON.stringify({
+            count: count + 1,
+            windowStart
+          }), { expirationTtl: 120 });
+        } else {
+          await env.RATE_LIMIT_KV.put(rateLimitKey, JSON.stringify({
+            count: 1,
+            windowStart: now
+          }), { expirationTtl: 120 });
+        }
+      } else {
+        await env.RATE_LIMIT_KV.put(rateLimitKey, JSON.stringify({
+          count: 1,
+          windowStart: now
+        }), { expirationTtl: 120 });
+      }
+    }
 
     // 处理命令
     if (text && text.startsWith('/')) {
-      const command = text.split(' ')[0];
-      const maxSize = formatFileSize(config.MAX_FILE_SIZE || DEFAULT_MAX_FILE_SIZE);
-      if (command === '/start') {
-        await sendMessage(chatId, `🤖 机器人已启用！\n\n直接发送文件即可自动上传，支持图片、视频、音频、文档等多种格式。当前支持最大${maxSize}的文件上传。`, config);
-      } else if (command === '/help') {
-        await sendMessage(chatId, `📖 使用说明：\n\n1. 发送 /start 启动机器人（仅首次需要）。\n2. 直接发送图片、视频、音频、文档或其他文件，机器人会自动处理上传。\n3. 当前支持最大${maxSize}的文件上传。\n4. 无需输入其他命令，无需切换模式。\n5. 此机器人由 @zxsos 开发，支持多种文件类型上传。`, config);
-      }
-      return new Response('OK', { status: 200 });
+      return await handleCommand(text, chatId, config);
     }
 
     // 根据消息类型分发到不同的处理器
     if (message.photo && message.photo.length > 0) {
-      await handlePhoto(message, chatId, config);
+      ctx.waitUntil(handlePhoto(message, chatId, config));
     } else if (message.video || (message.document && (message.document.mime_type?.startsWith('video/') || message.document.file_name?.match(/\.(mp4|avi|mov|wmv|flv|mkv|webm|m4v|3gp|mpeg|mpg|ts)$/i)))) {
-      await handleVideo(message, chatId, !!message.document, config);
+      ctx.waitUntil(handleVideo(message, chatId, !!message.document, config));
     } else if (message.audio || (message.document && (message.document.mime_type?.startsWith('audio/') || message.document.file_name?.match(/\.(mp3|wav|ogg|flac|aac|m4a|wma|opus|mid|midi)$/i)))) {
-      await handleAudio(message, chatId, !!message.document, config);
+      ctx.waitUntil(handleAudio(message, chatId, !!message.document, config));
     } else if (message.animation || (message.document && (message.document.mime_type?.includes('animation') || message.document.file_name?.match(/\.gif$/i)))) {
-      await handleAnimation(message, chatId, !!message.document, config);
-    } else if (message.document && (message.document.mime_type?.includes('svg') || message.document.file_name?.match(/\.svg$/i))) { // SVG 作为 document 处理
-      await handleSvg(message, chatId, config);
-    } else if (message.document) { // 其他所有 document 类型
-      await handleDocument(message, chatId, config);
+      ctx.waitUntil(handleAnimation(message, chatId, !!message.document, config));
+    } else if (message.document && (message.document.mime_type?.includes('svg') || message.document.file_name?.match(/\.svg$/i))) {
+      ctx.waitUntil(handleSvg(message, chatId, config));
+    } else if (message.document) {
+      ctx.waitUntil(handleDocument(message, chatId, config));
     }
 
     return new Response('OK', { status: 200 });
   } catch (error) {
-    console.error('处理请求时出错:', error.stack || error); // 打印堆栈信息以便调试
+    console.error('处理请求时出错:', error.stack || error);
     const adminChatId = config.ADMIN_CHAT_ID || (update && update.message ? update.message.chat.id : null);
     if (adminChatId) {
-      await sendMessage(adminChatId, `处理请求时内部错误: ${error.message}`, config)
-            .catch(e => console.error("发送错误消息给管理员失败:", e.stack || e));
+      ctx.waitUntil(
+        sendMessage(adminChatId, `⚠️ 处理请求时内部错误: ${error.message}`, config)
+          .catch(e => console.error("发送错误消息给管理员失败:", e.stack || e))
+      );
     }
-    return new Response(`处理请求时发生内部错误: ${error.message}`, { status: 500 });
+    return new Response('OK', { status: 200 });
   }
+}
+
+// 处理命令
+async function handleCommand(text, chatId, config) {
+  const command = text.split(' ')[0];
+  const maxSize = formatFileSize(config.MAX_FILE_SIZE || DEFAULT_MAX_FILE_SIZE);
+  
+  switch (command) {
+    case '/start':
+      await sendMessage(chatId, 
+        `🤖 *机器人已启用！*\n\n` +
+        `直接发送文件即可自动上传，支持图片、视频、音频、文档等多种格式。\n\n` +
+        `📊 当前支持最大 ${maxSize} 的文件上传。\n` +
+        `⚡ 使用 /help 查看详细说明。`, 
+        config
+      );
+      break;
+      
+    case '/help':
+      await sendMessage(chatId, 
+        `📖 *使用说明*\n\n` +
+        `1️⃣ 发送 /start 启动机器人（仅首次需要）\n` +
+        `2️⃣ 直接发送图片、视频、音频、文档或其他文件\n` +
+        `3️⃣ 机器人会自动处理上传并返回链接\n` +
+        `4️⃣ 当前支持最大 ${maxSize} 的文件上传\n\n` +
+        `📝 *支持的文件类型*\n` +
+        `• 图片：JPG, PNG, GIF, WebP, SVG 等\n` +
+        `• 视频：MP4, AVI, MOV, MKV 等\n` +
+        `• 音频：MP3, WAV, OGG, FLAC 等\n` +
+        `• 文档：PDF, DOC, XLS, ZIP 等\n\n` +
+        `⚙️ *其他命令*\n` +
+        `/stats - 查看使用统计\n` +
+        `/about - 关于此机器人`, 
+        config
+      );
+      break;
+      
+    case '/stats':
+      await sendMessage(chatId, 
+        `📊 *使用统计*\n\n` +
+        `此功能需要配置 KV 存储才能使用。\n` +
+        `请联系管理员启用此功能。`, 
+        config
+      );
+      break;
+      
+    case '/about':
+      await sendMessage(chatId, 
+        `ℹ️ *关于此机器人*\n\n` +
+        `这是一个基于 Cloudflare Workers 的 Telegram 文件上传机器人。\n\n` +
+        `✨ *特性*\n` +
+        `• 支持多种文件类型\n` +
+        `• 快速上传到图床\n` +
+        `• 完全免费使用\n` +
+        `• 开源项目\n\n` +
+        `🔗 GitHub: https://github.com/Renjiu13/TG_BotScendr`, 
+        config
+      );
+      break;
+      
+    default:
+      await sendMessage(chatId, 
+        `❓ 未知命令。使用 /help 查看可用命令。`, 
+        config
+      );
+  }
+  
+  return new Response('OK', { status: 200 });
 }
 
 // --- 通用文件上传处理器 ---
@@ -94,39 +209,77 @@ async function genericFileUploadHandler(chatId, fileId, fileName, mimeType, file
 
   await sendMessage(chatId, `🔄 正在处理您的${fileTypeLabel} "${fileName}"，请稍候...`, config);
 
-  const fileInfoResponse = await getFile(fileId, config);
-  if (!fileInfoResponse || !fileInfoResponse.ok) {
-    await sendMessage(chatId, `❌ 无法获取${fileTypeLabel}信息 (来自Telegram API)，请稍后再试。`, config);
-    return;
-  }
-
-  const filePath = fileInfoResponse.result.file_path;
-  const telegramFileUrl = `https://api.telegram.org/file/bot${TG_BOT_TOKEN}/${filePath}`;
-
   try {
-    const tgFileResponse = await fetch(telegramFileUrl);
+    const fileInfoResponse = await getFile(fileId, config);
+    if (!fileInfoResponse || !fileInfoResponse.ok) {
+      await sendMessage(chatId, `❌ 无法获取${fileTypeLabel}信息 (来自Telegram API)，请稍后再试。`, config);
+      return;
+    }
+
+    const filePath = fileInfoResponse.result.file_path;
+    const fileSize = fileInfoResponse.result.file_size || 0;
+    const maxSize = config.MAX_FILE_SIZE || DEFAULT_MAX_FILE_SIZE;
+
+    // 提前检查文件大小
+    if (fileSize > maxSize) {
+      await sendMessage(chatId, 
+        `⚠️ ${fileTypeLabel}太大 (${formatFileSize(fileSize)})，超过当前限制 ${formatFileSize(maxSize)}，无法处理。\n\n` +
+        `💡 *建议*\n` +
+        `1️⃣ 压缩文件后再上传\n` +
+        `2️⃣ 使用其他文件分享服务\n` +
+        `3️⃣ 联系管理员提高限制`, 
+        config
+      );
+      return;
+    }
+
+    const telegramFileUrl = `https://api.telegram.org/file/bot${TG_BOT_TOKEN}/${filePath}`;
+
+    // 根据文件大小动态调整提示阈值
+    const warningThreshold = Math.min(maxSize * 0.5, 10 * 1024 * 1024);
+    if (fileSize > warningThreshold && fileSize <= maxSize) {
+      await sendMessage(chatId, `ℹ️ 文件大小为 ${formatFileSize(fileSize)}，处理和上传可能需要一些时间，请耐心等待...`, config);
+    }
+
+    // 下载文件
+    const tgFileResponse = await fetch(telegramFileUrl, {
+      signal: AbortSignal.timeout(30000) // 30秒超时
+    });
+    
     if (!tgFileResponse.ok) {
       throw new Error(`从Telegram获取文件失败: ${tgFileResponse.status} ${tgFileResponse.statusText}`);
     }
 
     const fileBuffer = await tgFileResponse.arrayBuffer();
-    const fileSize = fileBuffer.byteLength;
-    const maxSize = config.MAX_FILE_SIZE || DEFAULT_MAX_FILE_SIZE;
 
-    if (fileSize > maxSize) {
-      await sendMessage(chatId, `⚠️ ${fileTypeLabel}太大 (${formatFileSize(fileSize)})，超过当前限制 ${formatFileSize(maxSize)}，无法处理。\n\n如果文件较大，建议：\n1. 压缩文件后再上传\n2. 分片上传\n3. 使用其他文件分享服务`, config);
-      return;
-    }
+    // 构建multipart/form-data（Cloudflare Workers兼容方式）
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+    const formDataParts = [];
+    
+    // 添加文件部分
+    formDataParts.push(`--${boundary}\r\n`);
+    formDataParts.push(`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n`);
+    formDataParts.push(`Content-Type: ${mimeType}\r\n\r\n`);
+    
+    // 将ArrayBuffer转换为Uint8Array
+    const fileData = new Uint8Array(fileBuffer);
+    
+    // 结束边界
+    const endBoundary = `\r\n--${boundary}--\r\n`;
 
-    // 根据文件大小动态调整提示阈值
-    const warningThreshold = Math.min(maxSize * 0.5, 10 * 1024 * 1024); // 取最大值的一半或10MB中的较小值
-    if (fileSize > warningThreshold && fileSize <= maxSize) {
-      await sendMessage(chatId, `ℹ️ 文件大小为 ${formatFileSize(fileSize)}，处理和上传可能需要一些时间，请耐心等待。`, config);
-    }
+    // 组合所有部分
+    const textEncoder = new TextEncoder();
+    const headerBytes = textEncoder.encode(formDataParts.join(''));
+    const endBytes = textEncoder.encode(endBoundary);
+    
+    // 创建完整的请求体
+    const totalLength = headerBytes.length + fileData.length + endBytes.length;
+    const requestBody = new Uint8Array(totalLength);
+    requestBody.set(headerBytes, 0);
+    requestBody.set(fileData, headerBytes.length);
+    requestBody.set(endBytes, headerBytes.length + fileData.length);
 
-    const formData = new FormData();
-    formData.append('file', new File([fileBuffer], fileName, { type: mimeType }));
-
+    // 构建上传URL
     const uploadUrl = new URL(IMG_BED_URL);
     uploadUrl.searchParams.append('returnFormat', 'full');
     if (AUTH_CODE) {
@@ -135,17 +288,23 @@ async function genericFileUploadHandler(chatId, fileId, fileName, mimeType, file
 
     console.log(`${fileTypeLabel}上传请求 URL: ${uploadUrl.toString()}`);
 
+    // 上传到图床
     const uploadResponse = await fetch(uploadUrl, {
       method: 'POST',
-      body: formData
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`
+      },
+      body: requestBody,
+      signal: AbortSignal.timeout(60000) // 60秒超时
     });
 
     if (!uploadResponse.ok) {
-      throw new Error(`图床上传失败: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      const errorText = await uploadResponse.text();
+      throw new Error(`图床上传失败 (${uploadResponse.status}): ${errorText.substring(0, 100)}`);
     }
 
     const responseText = await uploadResponse.text();
-    console.log(`${fileTypeLabel}上传原始响应:`, responseText);
+    console.log(`${fileTypeLabel}上传原始响应:`, responseText.substring(0, 500));
 
     let uploadResult;
     try {
@@ -157,24 +316,33 @@ async function genericFileUploadHandler(chatId, fileId, fileName, mimeType, file
     const extractedUrl = extractUrlFromResult(uploadResult, IMG_BED_URL);
 
     if (extractedUrl) {
-      const successMsg = `✅ ${fileTypeLabel}上传成功！\n\n` +
-                        `📄 文件名: ${fileName}\n` +
-                        `📦 文件大小: ${formatFileSize(fileSize)}\n` +
-                        `🔗 下载链接:\n${extractedUrl}\n\n`;
+      const successMsg = 
+        `✅ *${fileTypeLabel}上传成功！*\n\n` +
+        `📄 文件名: \`${fileName}\`\n` +
+        `📦 文件大小: ${formatFileSize(fileSize)}\n` +
+        `🔗 下载链接:\n${extractedUrl}\n\n` +
+        `_点击链接即可访问或下载文件_`;
       await sendMessage(chatId, successMsg, config);
     } else {
-      await sendMessage(chatId, `⚠️ 无法从图床获取${fileTypeLabel}链接。图床原始响应 (前200字符):\n${responseText.substring(0, 200)}...\n\n如果需要，可尝试Telegram临时链接 (有效期有限):\n${telegramFileUrl}`, config);
+      await sendMessage(chatId, 
+        `⚠️ 无法从图床获取${fileTypeLabel}链接。\n\n` +
+        `图床原始响应 (前200字符):\n\`\`\`\n${responseText.substring(0, 200)}\n\`\`\`\n\n` +
+        `如果需要，可尝试Telegram临时链接 (有效期有限):\n${telegramFileUrl}`, 
+        config
+      );
     }
 
   } catch (error) {
     console.error(`处理${fileTypeLabel}时出错:`, error.stack || error);
-    let errorMessage = `❌ 处理${fileTypeLabel}时出错: ${error.message}`;
+    let errorMessage = `❌ *处理${fileTypeLabel}时出错*\n\n错误: ${error.message}`;
     
     // 根据错误类型提供更具体的建议
     if (error.message.includes('413') || error.message.includes('too large')) {
-      errorMessage += '\n\n文件可能超过图床限制，建议：\n1. 压缩文件后再上传\n2. 分片上传\n3. 使用其他文件分享服务';
-    } else if (error.message.includes('timeout') || error.message.includes('timed out')) {
-      errorMessage += '\n\n上传超时，建议：\n1. 检查网络连接\n2. 稍后重试\n3. 如果文件较大，考虑压缩后上传';
+      errorMessage += '\n\n💡 *建议*\n1️⃣ 压缩文件后再上传\n2️⃣ 使用其他文件分享服务';
+    } else if (error.message.includes('timeout') || error.message.includes('timed out') || error.name === 'TimeoutError') {
+      errorMessage += '\n\n💡 *建议*\n1️⃣ 检查网络连接\n2️⃣ 稍后重试\n3️⃣ 如果文件较大，考虑压缩后上传';
+    } else if (error.message.includes('fetch')) {
+      errorMessage += '\n\n💡 *建议*\n1️⃣ 检查图床服务是否正常\n2️⃣ 稍后重试';
     }
     
     await sendMessage(chatId, errorMessage, config);
@@ -242,12 +410,45 @@ async function getFile(fileId, config) {
 async function sendMessage(chatId, text, config) {
   const { TG_BOT_TOKEN } = config;
   const API_URL = `https://api.telegram.org/bot${TG_BOT_TOKEN}`;
-  const response = await fetch(`${API_URL}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' }),
-  });
-  return await response.json();
+  
+  try {
+    const response = await fetch(`${API_URL}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        chat_id: chatId, 
+        text: text, 
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      }),
+      signal: AbortSignal.timeout(10000) // 10秒超时
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('发送消息失败:', errorData);
+      
+      // 如果Markdown解析失败，尝试使用纯文本
+      if (errorData.description?.includes('parse')) {
+        const fallbackResponse = await fetch(`${API_URL}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            chat_id: chatId, 
+            text: text.replace(/[*_`\[\]]/g, ''), // 移除Markdown标记
+            disable_web_page_preview: true
+          }),
+          signal: AbortSignal.timeout(10000)
+        });
+        return await fallbackResponse.json();
+      }
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('发送消息异常:', error);
+    throw error;
+  }
 }
 
 function extractUrlFromResult(result, imgBedUrl) {

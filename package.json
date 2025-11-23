@@ -1,15 +1,30 @@
 {
-    "name": "telegram-file-uploader",
-    "version": "1.0.0",
-    "description": "Telegram 文件上传机器人，支持多种文件类型上传到指定图床",
-    "scripts": {
-      "deploy": "wrangler publish",
-      "dev": "wrangler dev"
-    },
-    "devDependencies": {
-      "wrangler": "^3.0.0"
-    },
-    "engines": {
-      "node": ">=16"
-    }
-  }
+  "name": "telegram-file-uploader",
+  "version": "2.0.0",
+  "description": "Telegram 文件上传机器人，支持多种文件类型上传到指定图床，优化用于 Cloudflare Workers",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "validate": "wrangler deploy --dry-run",
+    "setup:kv": "wrangler kv:namespace create RATE_LIMIT_KV",
+    "setup:secret": "wrangler secret put CONFIG"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "cloudflare",
+    "workers",
+    "file-upload",
+    "image-hosting"
+  ],
+  "author": "",
+  "license": "MIT"
+}

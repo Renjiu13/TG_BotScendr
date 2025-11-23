@@ -1,0 +1,9 @@
+{
+  "TG_BOT_TOKEN": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+  "IMG_BED_URL": "https://your-image-host.com/upload",
+  "MAX_FILE_SIZE": 20971520,
+  "AUTH_CODE": "your_auth_code_if_needed",
+  "ADMIN_CHAT_ID": 123456789,
+  "ALLOWED_USERS": [123456789, 987654321],
+  "WEBHOOK_SECRET": "use_a_long_random_string_here"
+}

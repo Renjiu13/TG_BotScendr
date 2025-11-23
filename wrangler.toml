@@ -1,7 +1,21 @@
 name = "tg-botscendr"
 main = "worker.js"
-compatibility_date = "2023-01-01"
+compatibility_date = "2024-01-01"
+workers_dev = true
 
-# 可选：配置环境变量
+# KV命名空间绑定（可选，用于速率限制）
+# 取消注释以下行并创建KV命名空间来启用速率限制
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "your_kv_namespace_id"
+
+# 环境变量（非敏感信息）
 [vars]
-# 不需要在这里设置 CONFIG，将通过 wrangler secret 命令设置
+# 所有敏感配置通过 wrangler secret put CONFIG 命令设置
+
+# 生产环境配置
+[env.production]
+name = "tg-botscendr-prod"
+# [[env.production.kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "your_production_kv_namespace_id"
